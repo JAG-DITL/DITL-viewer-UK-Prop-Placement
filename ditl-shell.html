@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day in the Life — Workflow Engine</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: #FAFBFC; }
+  input[type="file"] { display: none; }
+  .load-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 40px 20px; text-align: center; }
+  .load-screen h1 { font-family: 'DM Serif Display', serif; font-size: 32px; color: #1a1a1a; margin-bottom: 8px; }
+  .load-screen p { color: #666; font-size: 14px; max-width: 500px; line-height: 1.6; margin-bottom: 32px; }
+  .load-btn { padding: 14px 32px; border-radius: 12px; border: 2px solid #1B4965; background: #1B4965; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px; }
+  .load-btn:hover { background: #163d55; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(27,73,101,0.3); }
+  .toolbar { position: sticky; top: 0; z-index: 100; background: rgba(255,255,255,0.95); backdrop-filter: blur(8px); border-bottom: 1px solid #e0e0e0; padding: 10px 20px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .toolbar-btn { padding: 6px 12px; border-radius: 8px; border: 1px solid #ddd; background: #fff; font-size: 11px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s; display: inline-flex; align-items: center; gap: 5px; }
+  .toolbar-btn:hover { border-color: #999; background: #f5f5f5; }
+  .phase-label { display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #fff; margin-bottom: 6px; }
+  @media print { .toolbar { display: none !important; } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useCallback } = React;
+
+/* ═══ Badge ═══ */
+function Badge({ t, type }) {
+  const c = { s: { bg:"#FFF3E0",b:"#FF9800",t:"#E65100" }, w: { bg:"#E3F2FD",b:"#2196F3",t:"#0D47A1" }, c: { bg:"#E8F5E9",b:"#4CAF50",t:"#1B5E20" } }[type];
+  return <span style={{ display:"inline-block",padding:"3px 10px",borderRadius:12,fontSize:11,fontWeight:600,margin:"0 4px 4px 0",background:c.bg,border:`1px solid ${c.b}`,color:c.t }}>{t}</span>;
+}
+
+/* ═══ Performer Colors ═══ */
+const PC = {
+  "Sanctions Team":       { bg:"#FFF3E0",border:"#FFB74D",text:"#E65100",header:"#F57C00" },
+  "Cat Analytics":        { bg:"#FFF8E1",border:"#FFD54F",text:"#F57F17",header:"#F9A825" },
+  "Market Security":      { bg:"#FBE9E7",border:"#FF8A65",text:"#BF360C",header:"#E64A19" },
+  "Markets / Reinsurers": { bg:"#E8EAF6",border:"#9FA8DA",text:"#283593",header:"#3949AB" },
+  "Cedant":               { bg:"#E0F7FA",border:"#80DEEA",text:"#00695C",header:"#00897B" },
+  "Global Fac Processing":{ bg:"#E8F5E9",border:"#81C784",text:"#1B5E20",header:"#2E7D32" }
+};
+function gpc(name) { return PC[name] || { bg:"#F5F5F5",border:"#BDBDBD",text:"#424242",header:"#616161" }; }
+
+/* ═══ Main App ═══ */
+function App() {
+  const [config, setConfig] = useState(null);
+  const [perKey, setPerKey] = useState("broker");
+  const [si, setSi] = useState(0);
+  const [tab, setTab] = useState("pain");
+  const fileRef = useRef(null);
+
+  const loadConfig = useCallback((e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (data.meta && data.personas && data.stages) {
+          setConfig(data); setPerKey(Object.keys(data.personas)[0]); setSi(0); setTab("pain");
+        } else { alert('Invalid config: missing meta, personas, or stages.'); }
+      } catch (err) { alert('JSON parse error: ' + err.message); }
+    };
+    reader.readAsText(file); e.target.value = '';
+  }, []);
+
+  /* ── Load Screen ── */
+  if (!config) {
+    return (
+      <div className="load-screen">
+        <div style={{ fontSize:48,marginBottom:16 }}>📋</div>
+        <h1>Day in the Life — Workflow Engine</h1>
+        <p>Load a JSON configuration file to populate the interactive walkthrough. The config contains all stage definitions, process steps, personas, and narrative content.</p>
+        <button className="load-btn" onClick={() => fileRef.current?.click()}>📂 Load Configuration File</button>
+        <input ref={fileRef} type="file" accept=".json" onChange={loadConfig} />
+        <div style={{ marginTop:40,padding:'20px 28px',background:'#fff',borderRadius:12,border:'1px solid #e0e0e0',maxWidth:520,textAlign:'left',fontSize:12,color:'#666',lineHeight:1.7 }}>
+          <strong style={{ color:'#333',fontSize:13 }}>Configuration File Structure</strong><br/>
+          The JSON file should contain: <strong>meta</strong> (title, subtitle, facilitation guide), <strong>personas</strong> (switchable user perspectives), <strong>phases</strong> (stage groupings), and <strong>stages</strong> (each with currentPain, futureState, otherPerformers, dataDomains, and systems).
+          <br/><br/>
+          <strong style={{ color:'#333' }}>How to populate:</strong> Open the JSON file in any text editor, replace placeholder text (marked with [brackets]), and save. Then load the updated file here.
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Derived State ── */
+  const personaKeys = Object.keys(config.personas);
+  const p = config.personas[perKey];
+  const s = config.stages[si];
+  const phases = config.phases || [];
+  const cp = s.currentPain?.[perKey] || { story:'(No data for this persona at this stage)',pains:[],stepsToday:0,stepsFuture:0 };
+  const fs = s.futureState?.[perKey] || { story:'(No data)',actions:[],automated:[] };
+  const otherPerformers = s.otherPerformers || [];
+  const currentPhase = phases.find(ph => ph.stages.includes(s.id));
+
+  const allTabs = [
+    { k:"pain", l:"🔴 Today's Reality" },
+    { k:"story", l:"🟢 Future Experience" },
+    { k:"actions", l:"✋ My Actions" },
+    { k:"auto", l:"⚡ Workflow Automates" },
+    ...(otherPerformers.length > 0 ? [{ k:"others", l:"👥 Other Performers" }] : []),
+    { k:"data", l:"📊 Data Domains" },
+    { k:"sys", l:"🖥️ Systems" }
+  ];
+  const activeTab = allTabs.find(t => t.k === tab) ? tab : "pain";
+
+  return (
+    <div>
+      {/* ── Toolbar ── */}
+      <div className="toolbar">
+        <span style={{ fontSize:11,fontWeight:700,color:'#1B4965',letterSpacing:1 }}>DITL VIEWER</span>
+        <div style={{ width:1,height:20,background:'#e0e0e0' }} />
+        <button className="toolbar-btn" onClick={() => fileRef.current?.click()}>📂 Load Config</button>
+        <input ref={fileRef} type="file" accept=".json" onChange={loadConfig} />
+        <button className="toolbar-btn" onClick={() => { setConfig(null); setSi(0); setTab("pain"); }}>✕ Close</button>
+        <div style={{ flex:1 }} />
+        <span style={{ fontSize:10,color:'#bbb' }}>{config.stages.length} stages · {phases.length} phases · {personaKeys.length} personas</span>
+      </div>
+
+      <div style={{ maxWidth:1000,margin:'0 auto',padding:'24px 20px' }}>
+
+        {/* ── Header ── */}
+        <div style={{ marginBottom:24 }}>
+          <div style={{ fontSize:11,fontWeight:600,letterSpacing:2,color:'#999',textTransform:'uppercase',marginBottom:4 }}>{config.meta.org}</div>
+          <h1 style={{ fontFamily:"'DM Serif Display',serif",fontSize:26,color:'#1a1a1a',lineHeight:1.2 }}>{config.meta.title}</h1>
+          <p style={{ color:'#666',fontSize:13,margin:'6px 0 0',lineHeight:1.5 }}>{config.meta.subtitle}</p>
+        </div>
+
+        {/* ── Persona Selector ── */}
+        <div style={{ display:'flex',gap:10,marginBottom:20 }}>
+          {personaKeys.map(k => {
+            const v = config.personas[k];
+            return (
+              <button key={k} onClick={() => { setPerKey(k); setTab("pain"); }}
+                style={{ flex:1,padding:14,borderRadius:12,cursor:'pointer',border:perKey===k?`2px solid ${v.col}`:'2px solid #e0e0e0',background:perKey===k?v.bg:'#fff',textAlign:'left',transition:'all 0.2s' }}>
+                <div style={{ fontSize:20,marginBottom:4 }}>{v.ic}</div>
+                <div style={{ fontSize:15,fontWeight:700,color:perKey===k?v.col:'#666' }}>{v.name}</div>
+                <div style={{ fontSize:11,color:perKey===k?v.acc:'#999',fontStyle:'italic' }}>{v.sub}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ── Persona Context ── */}
+        <div style={{ padding:'12px 16px',borderRadius:10,marginBottom:18,background:p.bg,borderLeft:`4px solid ${p.col}`,fontSize:12,color:'#444',lineHeight:1.6 }}>
+          <strong style={{ color:p.col }}>Persona context:</strong> {p.ctx}
+        </div>
+
+        {/* ── Phase + Stage Navigation ── */}
+        <div style={{ marginBottom:24 }}>
+          {phases.map((phase, pi) => {
+            const phaseStages = config.stages.filter(st => phase.stages.includes(st.id));
+            const isActivePhase = phase.stages.includes(s.id);
+            return (
+              <div key={pi} style={{ marginBottom:12 }}>
+                <div className="phase-label" style={{ background:isActivePhase?phase.col:'#bbb' }}>{phase.name}</div>
+                <div style={{ display:'grid',gridTemplateColumns:`repeat(${phaseStages.length}, 1fr)`,gap:6 }}>
+                  {phaseStages.map(st => {
+                    const idx = config.stages.findIndex(x => x.id === st.id);
+                    const isActive = idx === si;
+                    const isPast = idx < si;
+                    return (
+                      <button key={st.id} onClick={() => { setSi(idx); setTab("pain"); }}
+                        style={{ padding:'10px 8px',borderRadius:8,cursor:'pointer',border:isActive?`2px solid ${p.col}`:'1px solid #e0e0e0',background:isActive?p.bg:isPast?'#f5f5f5':'#fff',textAlign:'center',transition:'all 0.15s' }}>
+                        <div style={{ fontSize:16,fontWeight:700,color:isActive?p.col:isPast?'#999':'#666',marginBottom:2 }}>{st.id}</div>
+                        <div style={{ fontSize:9,fontWeight:isActive?700:500,color:isActive?p.col:'#888',lineHeight:1.2 }}>{st.name}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── Step Count Metrics ── */}
+        {(cp.stepsToday > 0 || cp.stepsFuture > 0) && (
+          <div style={{ display:'flex',gap:10,marginBottom:16 }}>
+            <div style={{ flex:1,padding:'10px 14px',borderRadius:10,background:'#FFF3E0',border:'1px solid #FFE0B2',textAlign:'center' }}>
+              <div style={{ fontSize:22,fontWeight:700,color:'#E65100' }}>{cp.stepsToday}</div>
+              <div style={{ fontSize:10,color:'#BF360C',fontWeight:600 }}>STEPS TODAY ({p.name})</div>
+            </div>
+            <div style={{ flex:1,padding:'10px 14px',borderRadius:10,background:'#E8F5E9',border:'1px solid #C8E6C9',textAlign:'center' }}>
+              <div style={{ fontSize:22,fontWeight:700,color:'#2E7D32' }}>{cp.stepsFuture}</div>
+              <div style={{ fontSize:10,color:'#1B5E20',fontWeight:600 }}>STEPS FUTURE ({p.name})</div>
+            </div>
+            {cp.stepsToday > 0 && (
+              <div style={{ flex:1,padding:'10px 14px',borderRadius:10,background:p.bg,border:`1px solid ${p.acc}`,textAlign:'center' }}>
+                <div style={{ fontSize:22,fontWeight:700,color:p.col }}>~{Math.round((1-cp.stepsFuture/cp.stepsToday)*100)}%</div>
+                <div style={{ fontSize:10,color:p.col,fontWeight:600 }}>REDUCTION</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Main Card ── */}
+        <div style={{ background:'#fff',borderRadius:14,boxShadow:'0 2px 12px rgba(0,0,0,0.06)',overflow:'hidden' }}>
+          {/* Card Header */}
+          <div style={{ padding:'18px 22px',background:`linear-gradient(135deg, ${p.col}, ${p.acc})`,color:'#fff' }}>
+            <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+              <div>
+                <div style={{ fontSize:11,opacity:0.8,marginBottom:3 }}>{s.code} · Stage {s.id} of {config.stages.length}</div>
+                <h2 style={{ margin:0,fontSize:20,fontFamily:"'DM Serif Display',serif" }}>{s.name}</h2>
+              </div>
+              {currentPhase && <div style={{ padding:'4px 12px',borderRadius:6,background:'rgba(255,255,255,0.2)',fontSize:10,fontWeight:700,letterSpacing:1,textTransform:'uppercase' }}>{currentPhase.name}</div>}
+            </div>
+          </div>
+
+          {/* Tab Bar */}
+          <div style={{ display:'flex',borderBottom:'1px solid #eee',overflowX:'auto',padding:'0 6px' }}>
+            {allTabs.map(t => (
+              <button key={t.k} onClick={() => setTab(t.k)}
+                style={{ padding:'10px 12px',border:'none',cursor:'pointer',fontSize:11,fontWeight:activeTab===t.k?700:500,color:activeTab===t.k?p.col:'#888',background:'transparent',borderBottom:activeTab===t.k?`3px solid ${p.col}`:'3px solid transparent',whiteSpace:'nowrap',fontFamily:"'DM Sans',sans-serif" }}>{t.l}</button>
+            ))}
+          </div>
+
+          {/* Tab Content */}
+          <div style={{ padding:'20px 22px',minHeight:200 }}>
+
+            {activeTab==="pain" && (
+              <div>
+                <div style={{ padding:16,borderRadius:10,background:'#FFF8E1',borderLeft:'4px solid #FF9800',fontSize:13,lineHeight:1.7,color:'#333',fontStyle:'italic',marginBottom:16 }}>"{cp.story}"</div>
+                <div style={{ fontSize:12,fontWeight:700,color:'#E65100',marginBottom:10,textTransform:'uppercase',letterSpacing:1 }}>Pain points in today's process</div>
+                {cp.pains.map((pain,i) => (
+                  <div key={i} style={{ display:'flex',gap:10,padding:'8px 12px',marginBottom:6,background:'#FFF3E0',borderRadius:8,border:'1px solid #FFE0B2',alignItems:'flex-start' }}>
+                    <span style={{ color:'#E65100',fontWeight:700,fontSize:14,flexShrink:0 }}>✕</span>
+                    <span style={{ fontSize:12,color:'#BF360C',lineHeight:1.5 }}>{pain}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop:14,padding:12,borderRadius:8,background:'#FFFDE7',border:'1px solid #FFF59D',fontSize:11,color:'#666' }}>
+                  <strong style={{ color:'#F57F17' }}>💡 Validation:</strong> Does this reflect your experience today? What are we missing or getting wrong?
+                </div>
+              </div>
+            )}
+
+            {activeTab==="story" && (
+              <div>
+                <div style={{ padding:16,borderRadius:10,background:'#E8F5E9',borderLeft:'4px solid #4CAF50',fontSize:13,lineHeight:1.7,color:'#333',fontStyle:'italic',marginBottom:16 }}>"{fs.story}"</div>
+                <div style={{ marginTop:14,padding:12,borderRadius:8,background:'#FFFDE7',border:'1px solid #FFF59D',fontSize:11,color:'#666' }}>
+                  <strong style={{ color:'#F57F17' }}>💡 Validation:</strong> Does this feel like a realistic and desirable future for your role? What would you change?
+                </div>
+              </div>
+            )}
+
+            {activeTab==="actions" && (
+              <div>
+                <p style={{ fontSize:12,color:'#666',marginTop:0,marginBottom:12 }}>Actions performed by <strong style={{ color:p.col }}>{p.name}</strong> in the future state:</p>
+                {fs.actions.length===0 && (
+                  <div style={{ padding:20,textAlign:'center',color:'#999',fontSize:12,fontStyle:'italic' }}>No manual actions for {p.name} at this stage — fully automated or handled by other performers.</div>
+                )}
+                {fs.actions.map((a,i) => (
+                  <div key={i} style={{ display:'flex',gap:10,padding:'8px 12px',marginBottom:6,background:i%2===0?'#fafafa':'#fff',borderRadius:8,border:'1px solid #f0f0f0',alignItems:'flex-start' }}>
+                    <span style={{ width:22,height:22,borderRadius:'50%',background:p.bg,color:p.col,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0 }}>{i+1}</span>
+                    <span style={{ fontSize:12,color:'#333',lineHeight:1.5 }}>{a}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeTab==="auto" && (
+              <div>
+                <p style={{ fontSize:12,color:'#666',marginTop:0,marginBottom:12 }}>What the <strong style={{ color:'#2E7D32' }}>Workflow Engine</strong> handles automatically:</p>
+                {fs.automated.map((a,i) => (
+                  <div key={i} style={{ display:'flex',gap:10,padding:'8px 12px',marginBottom:6,background:'#f1f8e9',borderRadius:8,border:'1px solid #dcedc8',alignItems:'flex-start' }}>
+                    <span style={{ fontSize:14,flexShrink:0 }}>⚡</span>
+                    <span style={{ fontSize:12,color:'#333',lineHeight:1.5 }}>{a}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeTab==="others" && (
+              <div>
+                <p style={{ fontSize:12,color:'#666',marginTop:0,marginBottom:16 }}>Other teams and external parties involved at this stage:</p>
+                {otherPerformers.map((op,oi) => {
+                  const pc = gpc(op.name);
+                  return (
+                    <div key={oi} style={{ marginBottom:16,borderRadius:10,overflow:'hidden',border:`1px solid ${pc.border}` }}>
+                      <div style={{ padding:'10px 16px',background:pc.bg,display:'flex',alignItems:'center',gap:8 }}>
+                        <span style={{ fontSize:16 }}>{op.ic}</span>
+                        <span style={{ fontSize:13,fontWeight:700,color:pc.header }}>{op.name}</span>
+                      </div>
+                      <div style={{ padding:'10px 16px',background:'#fff' }}>
+                        {op.steps.map((step,si2) => (
+                          <div key={si2} style={{ display:'flex',gap:8,padding:'6px 0',borderBottom:si2<op.steps.length-1?'1px solid #f5f5f5':'none',alignItems:'flex-start' }}>
+                            <span style={{ color:pc.text,fontSize:10,marginTop:2,flexShrink:0 }}>▸</span>
+                            <span style={{ fontSize:12,color:'#333',lineHeight:1.5 }}>{step}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {activeTab==="data" && (
+              <div>
+                <p style={{ fontSize:12,color:'#666',marginTop:0,marginBottom:12 }}>Data domains consumed and produced at this stage:</p>
+                <div style={{ display:'grid',gridTemplateColumns:'130px 80px 1fr',padding:'6px 0',borderBottom:'2px solid #ddd',fontSize:10,fontWeight:700,color:'#888',textTransform:'uppercase',letterSpacing:1 }}><span>Domain</span><span>Flow</span><span>Description</span></div>
+                {s.dataDomains.map((d,i) => (
+                  <div key={i} style={{ display:'grid',gridTemplateColumns:'130px 80px 1fr',padding:'5px 0',borderBottom:'1px solid #f0f0f0',fontSize:12,alignItems:'center' }}>
+                    <span style={{ fontWeight:600,color:'#333' }}>{d.n}</span>
+                    <span style={{ fontSize:10,color:'#666',background:'#f5f5f5',padding:'2px 6px',borderRadius:6,textAlign:'center' }}>{d.d}</span>
+                    <span style={{ color:'#555',fontSize:11 }}>{d.note}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeTab==="sys" && (
+              <div>
+                <p style={{ fontSize:12,color:'#666',marginTop:0,marginBottom:16 }}>Systems involved at this stage:</p>
+                {[
+                  { k:"supplier",l:"📥 Supplier Systems",d:"provide data into this stage",t:"s" },
+                  { k:"workflow",l:"⚙️ Systems Utilised in Workflow",d:"where work is performed",t:"w" },
+                  { k:"consuming",l:"📤 Consuming Systems",d:"receive outputs from this stage",t:"c" }
+                ].map(g => (
+                  <div key={g.k} style={{ marginBottom:16 }}>
+                    <div style={{ fontSize:11,fontWeight:700,marginBottom:6 }}>{g.l} <span style={{ fontWeight:400,color:'#999' }}>— {g.d}</span></div>
+                    <div style={{ display:'flex',flexWrap:'wrap' }}>
+                      {(s.systems[g.k]||[]).map((sys,i) => <Badge key={i} t={sys} type={g.t} />)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Navigation */}
+          <div style={{ display:'flex',justifyContent:'space-between',padding:'14px 22px',borderTop:'1px solid #eee' }}>
+            <button onClick={() => { setSi(Math.max(0,si-1)); setTab("pain"); }}
+              disabled={si===0}
+              style={{ padding:'8px 18px',borderRadius:8,cursor:si===0?'default':'pointer',border:'1px solid #ddd',background:'#fff',fontSize:12,fontWeight:600,color:si===0?'#ccc':'#444',fontFamily:"'DM Sans',sans-serif" }}>← Previous</button>
+            <span style={{ fontSize:11,color:'#aaa',alignSelf:'center' }}>{si+1} / {config.stages.length}</span>
+            <button onClick={() => { setSi(Math.min(config.stages.length-1,si+1)); setTab("pain"); }}
+              disabled={si===config.stages.length-1}
+              style={{ padding:'8px 18px',borderRadius:8,cursor:si===config.stages.length-1?'default':'pointer',border:'none',fontSize:12,fontWeight:600,background:si===config.stages.length-1?'#e0e0e0':p.col,color:'#fff',fontFamily:"'DM Sans',sans-serif" }}>Next Stage →</button>
+          </div>
+        </div>
+
+        {/* Facilitation Guide */}
+        <div style={{ marginTop:18,padding:'14px 18px',borderRadius:10,background:'#fff',border:'1px solid #e0e0e0',fontSize:11,color:'#777',lineHeight:1.6 }}>
+          <strong style={{ color:'#444' }}>Facilitation Guide:</strong> {config.meta.facilitationGuide}
+          <br /><strong style={{ color:'#444',marginTop:4,display:'inline-block' }}>Source data:</strong> {config.meta.sourceData}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
